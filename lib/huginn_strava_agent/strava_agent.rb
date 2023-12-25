@@ -200,16 +200,17 @@ module Agents
     
     def check_token_validity()
 
-      timestamp_to_compare = memory['expires_at']
-      
-      current_timestamp = Time.now.to_i
-      
-      difference_in_hours = (timestamp_to_compare - current_timestamp) / 3600.0
-      
-      if difference_in_hours < 2
+      if memory['expires_at'].nil?
         token_refresh()
       else
-        log "refresh not needed"
+        timestamp_to_compare = memory['expires_at']
+        current_timestamp = Time.now.to_i
+        difference_in_hours = (timestamp_to_compare - current_timestamp) / 3600.0
+        if difference_in_hours < 2
+          token_refresh()
+        else
+          log "refresh not needed"
+        end
       end
 
     end
