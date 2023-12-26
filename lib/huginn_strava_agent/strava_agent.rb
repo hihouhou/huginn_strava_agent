@@ -17,6 +17,8 @@ module Agents
 
       `refresh_token` is needed to refresh your token.
 
+      `per_page` is the number of result per page when possible.
+
       `client_id` is mandatory for authentication.
 
       `client_secret` is mandatory for authentication.
@@ -101,6 +103,7 @@ module Agents
         'client_secret' => '',
         'refresh_token' => '',
         'bearer_token' => '',
+        'per_page' => '5',
         'debug' => 'false',
         'expected_receive_period_in_days' => '2',
       }
@@ -111,10 +114,15 @@ module Agents
     form_configurable :client_secret, type: :string
     form_configurable :refresh_token, type: :string
     form_configurable :bearer_token, type: :string
+    form_configurable :per_page, type: :string
     form_configurable :debug, type: :boolean
     form_configurable :expected_receive_period_in_days, type: :string
     def validate_options
       errors.add(:base, "type has invalid value: should be 'token_refresh' 'get_activities'") if interpolated['type'].present? && !%w(token_refresh get_activities).include?(interpolated['type'])
+
+      unless options['per_page'].present? || !['get_activities'].include?(options['type'])
+        errors.add(:base, "per_page is a required field")
+      end
 
       unless options['client_id'].present?
         errors.add(:base, "client_id is a required field")
@@ -194,16 +202,16 @@ module Agents
       log_curl_output(response.code,response.body)
 
       payload = JSON.parse(response.body)
-      memory['expires_at'] = payload['expires_at']
+      memory['credentials'] = payload
 
     end
     
     def check_token_validity()
 
-      if memory['expires_at'].nil?
+      if memory['credentials'].nil?
         token_refresh()
       else
-        timestamp_to_compare = memory['expires_at']
+        timestamp_to_compare = memory['credentials']['expires_at']
         current_timestamp = Time.now.to_i
         difference_in_hours = (timestamp_to_compare - current_timestamp) / 3600.0
         if difference_in_hours < 2
@@ -218,7 +226,7 @@ module Agents
     def get_activities()
 
       check_token_validity()
-      uri = URI.parse("https://www.strava.com/api/v3/athlete/activities")
+      uri = URI.parse("https://www.strava.com/api/v3/athlete/activities?per_page=#{interpolated['per_page']}")
       request = Net::HTTP::Get.new(uri)
       request["Authorization"] = "Bearer #{interpolated['bearer_token']}"
       
@@ -237,7 +245,7 @@ module Agents
       if payload != memory['last_status']
         payload.each do |activity|        
           found = false
-          if !memory['last_status'].nil? and memory['last_status']['activity'].present?
+          if !memory['last_status'].nil? and memory['last_status'].present?
             last_status = memory['last_status']
             if interpolated['debug'] == 'true'
               log "last_status"
