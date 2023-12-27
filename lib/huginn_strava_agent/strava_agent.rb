@@ -13,9 +13,9 @@ module Agents
 
       `debug` is used for verbose mode.
 
-      `bearer_token` is mandatory for authentication.
+      `bearer_token` is mandatory for authentication (to avoid issue when refresh is needed, continue to use the default value for this field).
 
-      `refresh_token` is needed to refresh your token.
+      `refresh_token` is needed to refresh your token (to avoid issue when refresh is needed, continue to use the default value for this field).
 
       `per_page` is the number of result per page when possible.
 
@@ -101,8 +101,8 @@ module Agents
         'type' => 'get_activities',
         'client_id' => '',
         'client_secret' => '',
-        'refresh_token' => '',
-        'bearer_token' => '',
+        'refresh_token' => '{% credential strava_refresh_token %}',
+        'bearer_token' => '{% credential strava_bearer_token %}',
         'per_page' => '5',
         'debug' => 'false',
         'expected_receive_period_in_days' => '2',
@@ -168,6 +168,12 @@ module Agents
 
     private
 
+    def set_credential(name, value)
+      c = user.user_credentials.find_or_initialize_by(credential_name: name)
+      c.credential_value = value
+      c.save!
+    end
+
     def log_curl_output(code,body)
 
       log "request status : #{code}"
@@ -202,16 +208,28 @@ module Agents
       log_curl_output(response.code,response.body)
 
       payload = JSON.parse(response.body)
-      memory['credentials'] = payload
+      if interpolated['refresh_token'] != payload['refresh_token']
+        set_credential("strava_refresh_token", payload['refresh_token'])
+        if interpolated['debug'] == 'true'
+          log "strava_refresh_token credential updated"
+        end
+      end
+      if interpolated['bearer_token'] != payload['access_token']
+        set_credential("strava_bearer_token", payload['access_token'])
+        if interpolated['debug'] == 'true'
+          log "strava_bearer_token credential updated"
+        end
+      end
+      memory['expires_at'] = payload['expires_at']
 
     end
     
     def check_token_validity()
 
-      if memory['credentials'].nil?
+      if memory['expires_at'].nil?
         token_refresh()
       else
-        timestamp_to_compare = memory['credentials']['expires_at']
+        timestamp_to_compare = memory['expires_at']
         current_timestamp = Time.now.to_i
         difference_in_hours = (timestamp_to_compare - current_timestamp) / 3600.0
         if difference_in_hours < 2
@@ -220,7 +238,6 @@ module Agents
           log "refresh not needed"
         end
       end
-
     end
     
     def get_activities()
