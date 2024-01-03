@@ -269,7 +269,7 @@ module Agents
               log last_status
             end
             last_status.each do |activitybis|
-              if activity == activitybis
+              if activity == activitybis or activity['id'] == activitybis['id']
                 found = true
                 if interpolated['debug'] == 'true'
                   log "found is #{found}"
